@@ -5,6 +5,7 @@ import {
   managerReviews, 
   leadReviews, 
   appraisalCycles,
+  knowAboutMe,
   type Employee, 
   type InsertEmployee,
   type FeedbackRequest,
@@ -17,9 +18,24 @@ import {
   type InsertLeadReview,
   type AppraisalCycle,
   type InsertAppraisalCycle,
+  type KnowAboutMe,
+  type InsertKnowAboutMe,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, desc, sql } from "drizzle-orm";
+
+export interface EmployeeFeedbackStatus {
+  employee: Employee;
+  manager?: Employee | null;
+  totalAssigned: number;
+  totalCompleted: number;
+  latestFeedbackAt: Date | null;
+  feedbackRequests: (FeedbackRequest & { 
+    reviewer?: Employee; 
+    submitted: boolean;
+    submittedAt?: Date | null;
+  })[];
+}
 
 export interface IStorage {
   getEmployeeByUserId(userId: string): Promise<Employee | undefined>;
@@ -27,6 +43,7 @@ export interface IStorage {
   getEmployeeByEmail(email: string): Promise<Employee | undefined>;
   getAllEmployees(): Promise<Employee[]>;
   getEmployeesWithRelations(): Promise<(Employee & { manager?: Employee | null; lead?: Employee | null })[]>;
+  getEmployeesWithFeedbackActivity(cycleId: string): Promise<EmployeeFeedbackStatus[]>;
   createEmployee(employee: InsertEmployee): Promise<Employee>;
   updateEmployee(id: string, data: Partial<InsertEmployee>): Promise<Employee | undefined>;
 
@@ -75,6 +92,10 @@ export interface IStorage {
     averageRating: number | null;
     ratingDistribution: { rating: number; count: number }[];
   }>;
+
+  // Know About Me (KAM)
+  getKnowAboutMe(employeeId: string, cycleId: string): Promise<KnowAboutMe | undefined>;
+  upsertKnowAboutMe(data: InsertKnowAboutMe): Promise<KnowAboutMe>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -106,6 +127,76 @@ export class DatabaseStorage implements IStorage {
       manager: emp.managerId ? employeeMap.get(emp.managerId) || null : null,
       lead: emp.leadId ? employeeMap.get(emp.leadId) || null : null,
     }));
+  }
+
+  async getEmployeesWithFeedbackActivity(cycleId: string): Promise<EmployeeFeedbackStatus[]> {
+    const allEmployees = await db.select().from(employees).orderBy(employees.name);
+    const employeeMap = new Map(allEmployees.map(e => [e.id, e]));
+    
+    const allRequests = await db.select().from(feedbackRequests).where(
+      eq(feedbackRequests.appraisalCycleId, cycleId)
+    );
+    
+    const allFeedback = await db.select().from(peerFeedback).where(
+      eq(peerFeedback.appraisalCycleId, cycleId)
+    );
+    
+    const feedbackByRequest = new Map(allFeedback.map(f => [f.feedbackRequestId, f]));
+    
+    const employeeRequestsMap = new Map<string, typeof allRequests>();
+    for (const req of allRequests) {
+      const existing = employeeRequestsMap.get(req.targetEmployeeId) || [];
+      existing.push(req);
+      employeeRequestsMap.set(req.targetEmployeeId, existing);
+    }
+    
+    const results: EmployeeFeedbackStatus[] = [];
+    
+    for (const emp of allEmployees) {
+      const empRequests = employeeRequestsMap.get(emp.id) || [];
+      
+      if (empRequests.length === 0) continue;
+      
+      const enrichedRequests = empRequests.map(req => {
+        const feedback = feedbackByRequest.get(req.id);
+        const reviewer = employeeMap.get(req.reviewerEmployeeId);
+        return {
+          ...req,
+          reviewer,
+          submitted: !!feedback,
+          submittedAt: feedback?.submittedAt || null,
+        };
+      });
+      
+      const completedCount = enrichedRequests.filter(r => r.submitted).length;
+      
+      const submittedFeedback = enrichedRequests
+        .filter(r => r.submittedAt)
+        .map(r => r.submittedAt!)
+        .sort((a, b) => b.getTime() - a.getTime());
+      
+      const latestFeedbackAt = submittedFeedback.length > 0 ? submittedFeedback[0] : null;
+      
+      results.push({
+        employee: emp,
+        manager: emp.managerId ? employeeMap.get(emp.managerId) || null : null,
+        totalAssigned: empRequests.length,
+        totalCompleted: completedCount,
+        latestFeedbackAt,
+        feedbackRequests: enrichedRequests,
+      });
+    }
+    
+    results.sort((a, b) => {
+      if (a.latestFeedbackAt && b.latestFeedbackAt) {
+        return b.latestFeedbackAt.getTime() - a.latestFeedbackAt.getTime();
+      }
+      if (a.latestFeedbackAt) return -1;
+      if (b.latestFeedbackAt) return 1;
+      return b.totalCompleted - a.totalCompleted;
+    });
+    
+    return results;
   }
 
   async createEmployee(employee: InsertEmployee): Promise<Employee> {
@@ -333,6 +424,26 @@ export class DatabaseStorage implements IStorage {
         count,
       })),
     };
+  }
+
+  async getKnowAboutMe(employeeId: string, cycleId: string): Promise<KnowAboutMe | undefined> {
+    const [kam] = await db.select().from(knowAboutMe).where(
+      and(eq(knowAboutMe.employeeId, employeeId), eq(knowAboutMe.appraisalCycleId, cycleId))
+    );
+    return kam;
+  }
+
+  async upsertKnowAboutMe(data: InsertKnowAboutMe): Promise<KnowAboutMe> {
+    const existing = await this.getKnowAboutMe(data.employeeId, data.appraisalCycleId);
+    if (existing) {
+      const [updated] = await db.update(knowAboutMe)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(knowAboutMe.id, existing.id))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(knowAboutMe).values(data).returning();
+    return created;
   }
 }
 

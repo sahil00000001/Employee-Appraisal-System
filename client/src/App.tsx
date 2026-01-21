@@ -24,6 +24,8 @@ import Reports from "@/pages/reports";
 import AdminEmployees from "@/pages/admin/employees";
 import AdminCycles from "@/pages/admin/cycles";
 import ManagerAssignFeedback from "@/pages/manager/assign-feedback";
+import KnowAboutMe from "@/pages/know-about-me";
+import AdminDashboard from "@/pages/admin/dashboard";
 import NotFound from "@/pages/not-found";
 
 function AuthenticatedApp() {
@@ -71,6 +73,7 @@ function AuthenticatedApp() {
               <Route path="/manager-reviews" component={ManagerReviews} />
               <Route path="/lead-reviews" component={LeadReviews} />
               <Route path="/reports" component={Reports} />
+              <Route path="/know-about-me" component={KnowAboutMe} />
               <Route path="/admin/employees" component={AdminEmployees} />
               <Route path="/admin/cycles" component={AdminCycles} />
               <Route component={NotFound} />
@@ -101,6 +104,7 @@ function AppContent() {
       <Switch>
         <Route path="/login" component={Login} />
         <Route path="/manager/assign-feedback" component={ManagerAssignFeedback} />
+        <Route path="/admin/dashboard" component={AdminDashboard} />
         <Route component={Landing} />
       </Switch>
     );

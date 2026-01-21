@@ -3,7 +3,7 @@ import type { Express, RequestHandler } from "express";
 import connectPg from "connect-pg-simple";
 import { authStorage } from "./storage";
 import { db } from "../../db";
-import { otpCodes } from "@shared/schema";
+import { otpCodes, employees } from "@shared/schema";
 import { eq, and, gt } from "drizzle-orm";
 import { generateOTP, sendOTPEmail } from "../../email";
 
@@ -113,6 +113,12 @@ export async function setupAuth(app: Express) {
           lastName: "",
         });
       }
+
+      // Auto-link employee record to this user by email
+      await db
+        .update(employees)
+        .set({ userId: user!.id })
+        .where(eq(employees.email, email.toLowerCase()));
 
       (req.session as any).user = {
         claims: {

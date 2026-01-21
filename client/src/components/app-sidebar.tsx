@@ -9,7 +9,8 @@ import {
   LogOut,
   BarChart3,
   UserCog,
-  FileText
+  FileText,
+  UserCircle
 } from "lucide-react";
 import {
   Sidebar,
@@ -60,6 +61,11 @@ export function AppSidebar({ employee, pendingFeedbackCount = 0 }: AppSidebarPro
       title: "My Ratings",
       url: "/my-ratings",
       icon: Star,
+    },
+    {
+      title: "Know About Me",
+      url: "/know-about-me",
+      icon: UserCircle,
     },
   ];
 

@@ -9,7 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { BarChart3, ArrowLeft, Mail, KeyRound, Loader2, Shield, User } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 
-type LoginMode = "select" | "employee" | "manager";
+type LoginMode = "select" | "employee" | "manager" | "admin";
 type LoginStep = "email" | "otp";
 
 export default function Login() {
@@ -21,6 +21,8 @@ export default function Login() {
   const [otp, setOtp] = useState("");
   const [managerId, setManagerId] = useState("");
   const [managerPassword, setManagerPassword] = useState("");
+  const [adminUsername, setAdminUsername] = useState("");
+  const [adminPassword, setAdminPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
   const handleSendOTP = async (e: React.FormEvent) => {
@@ -144,6 +146,42 @@ export default function Login() {
     }
   };
 
+  const handleAdminLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!adminUsername || !adminPassword) {
+      toast({
+        title: "Credentials required",
+        description: "Please enter both Username and Password",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await apiRequest("POST", "/api/auth/admin-login", { 
+        username: adminUsername, 
+        password: adminPassword 
+      });
+      
+      toast({
+        title: "Login successful",
+        description: "Welcome, Admin!",
+      });
+      
+      window.location.href = "/admin/dashboard";
+    } catch (error: any) {
+      toast({
+        title: "Login failed",
+        description: error.message || "Invalid credentials",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleBackToSelect = () => {
     setMode("select");
     setStep("email");
@@ -151,6 +189,8 @@ export default function Login() {
     setOtp("");
     setManagerId("");
     setManagerPassword("");
+    setAdminUsername("");
+    setAdminPassword("");
   };
 
   return (
@@ -211,6 +251,80 @@ export default function Login() {
                   <div className="text-sm text-muted-foreground">Assign feedback to team members</div>
                 </div>
               </Button>
+
+              <Button 
+                className="w-full h-16 text-base gap-3 justify-start px-6" 
+                variant="outline"
+                onClick={() => setMode("admin")}
+                data-testid="button-admin-login"
+              >
+                <div className="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center">
+                  <KeyRound className="h-5 w-5 text-purple-500" />
+                </div>
+                <div className="text-left">
+                  <div className="font-semibold">Admin Login</div>
+                  <div className="text-sm text-muted-foreground">View all employee data and reports</div>
+                </div>
+              </Button>
+            </CardContent>
+          </Card>
+        ) : mode === "admin" ? (
+          <Card className="w-full max-w-md">
+            <CardHeader className="text-center">
+              <div className="mx-auto w-14 h-14 rounded-xl bg-purple-500/10 flex items-center justify-center mb-4">
+                <KeyRound className="h-7 w-7 text-purple-500" />
+              </div>
+              <CardTitle className="text-2xl">Admin Login</CardTitle>
+              <CardDescription>
+                Enter your admin credentials
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleAdminLogin} className="space-y-4">
+                <div className="space-y-2">
+                  <Label htmlFor="admin-username">Username</Label>
+                  <Input
+                    id="admin-username"
+                    type="text"
+                    placeholder="Enter username"
+                    value={adminUsername}
+                    onChange={(e) => setAdminUsername(e.target.value)}
+                    disabled={isLoading}
+                    data-testid="input-admin-username"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="admin-password">Password</Label>
+                  <Input
+                    id="admin-password"
+                    type="password"
+                    placeholder="Enter password"
+                    value={adminPassword}
+                    onChange={(e) => setAdminPassword(e.target.value)}
+                    disabled={isLoading}
+                    data-testid="input-admin-password"
+                  />
+                </div>
+                <Button 
+                  type="submit" 
+                  className="w-full gap-2" 
+                  disabled={isLoading}
+                  data-testid="button-admin-submit"
+                >
+                  {isLoading && <Loader2 className="h-4 w-4 animate-spin" />}
+                  Sign In as Admin
+                </Button>
+                <Button 
+                  type="button"
+                  variant="ghost"
+                  className="w-full gap-2"
+                  onClick={handleBackToSelect}
+                  data-testid="button-back-select"
+                >
+                  <ArrowLeft className="h-4 w-4" />
+                  Back to login options
+                </Button>
+              </form>
             </CardContent>
           </Card>
         ) : mode === "manager" ? (

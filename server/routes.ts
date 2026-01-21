@@ -9,7 +9,8 @@ import {
   insertPeerFeedbackSchema,
   insertManagerReviewSchema,
   insertLeadReviewSchema,
-  insertAppraisalCycleSchema
+  insertAppraisalCycleSchema,
+  insertKnowAboutMeSchema
 } from "@shared/schema";
 import { z } from "zod";
 
@@ -610,6 +611,181 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error fetching feedback assignments:", error);
       res.status(500).json({ message: "Failed to fetch assignments" });
+    }
+  });
+
+  // Admin authentication routes
+  const ADMIN_USERNAME = "admin";
+  const ADMIN_PASSWORD = "admin";
+
+  app.post("/api/auth/admin-login", (req, res) => {
+    const { username, password } = req.body;
+    
+    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+      (req.session as any).isAdmin = true;
+      res.json({ success: true, message: "Admin login successful" });
+    } else {
+      res.status(401).json({ message: "Invalid admin credentials" });
+    }
+  });
+
+  app.post("/api/auth/admin-logout", (req, res) => {
+    (req.session as any).isAdmin = false;
+    res.json({ success: true });
+  });
+
+  app.get("/api/auth/admin-check", (req, res) => {
+    const isAdmin = (req.session as any)?.isAdmin === true;
+    res.json({ isAdmin });
+  });
+
+  const isAdminSession = (req: Request, res: Response, next: NextFunction) => {
+    if ((req.session as any)?.isAdmin === true) {
+      next();
+    } else {
+      res.status(401).json({ message: "Admin authentication required" });
+    }
+  };
+
+  // Admin data routes
+  app.get("/api/admin/employees-full", isAdminSession, async (req, res) => {
+    try {
+      const employees = await storage.getEmployeesWithRelations();
+      res.json(employees);
+    } catch (error) {
+      console.error("Error fetching employees:", error);
+      res.status(500).json({ message: "Failed to fetch employees" });
+    }
+  });
+
+  app.get("/api/admin/feedback-activity", isAdminSession, async (req, res) => {
+    try {
+      const activeCycle = await storage.getActiveCycle();
+      if (!activeCycle) {
+        return res.json({ employees: [], cycle: null });
+      }
+      
+      const employeesWithActivity = await storage.getEmployeesWithFeedbackActivity(activeCycle.id);
+      res.json({ employees: employeesWithActivity, cycle: activeCycle });
+    } catch (error) {
+      console.error("Error fetching feedback activity:", error);
+      res.status(500).json({ message: "Failed to fetch feedback activity" });
+    }
+  });
+
+  app.get("/api/admin/employee-report/:employeeId", isAdminSession, async (req, res) => {
+    try {
+      const employeeId = req.params.employeeId as string;
+      const employee = await storage.getEmployeeById(employeeId);
+      
+      if (!employee) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      const activeCycle = await storage.getActiveCycle();
+      
+      // Get manager info
+      let manager = null;
+      if (employee.managerId) {
+        manager = await storage.getEmployeeById(employee.managerId);
+      }
+
+      // Get lead info
+      let lead = null;
+      if (employee.leadId) {
+        lead = await storage.getEmployeeById(employee.leadId);
+      }
+
+      // Get peer feedback received
+      let peerFeedback: any[] = [];
+      if (activeCycle) {
+        peerFeedback = await storage.getPeerFeedbackByTarget(employeeId, activeCycle.id);
+      }
+
+      // Get manager review
+      let managerReview = null;
+      if (activeCycle) {
+        managerReview = await storage.getManagerReviewForEmployee(employeeId, activeCycle.id);
+      }
+
+      // Get lead review
+      let leadReview = null;
+      if (activeCycle) {
+        leadReview = await storage.getLeadReviewForEmployee(employeeId, activeCycle.id);
+      }
+
+      // Get KAM data
+      let kamData = null;
+      if (activeCycle) {
+        kamData = await storage.getKnowAboutMe(employeeId, activeCycle.id);
+      }
+
+      res.json({
+        employee,
+        manager,
+        lead,
+        peerFeedback,
+        managerReview,
+        leadReview,
+        kamData,
+        activeCycle,
+      });
+    } catch (error) {
+      console.error("Error fetching employee report:", error);
+      res.status(500).json({ message: "Failed to fetch employee report" });
+    }
+  });
+
+  // Know About Me (KAM) routes
+  app.get("/api/know-about-me", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employee = await storage.getEmployeeByUserId(userId);
+      if (!employee) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      const activeCycle = await storage.getActiveCycle();
+      if (!activeCycle) {
+        return res.status(400).json({ message: "No active appraisal cycle" });
+      }
+
+      const kam = await storage.getKnowAboutMe(employee.id, activeCycle.id);
+      res.json(kam || null);
+    } catch (error) {
+      console.error("Error fetching KAM:", error);
+      res.status(500).json({ message: "Failed to fetch Know About Me data" });
+    }
+  });
+
+  app.post("/api/know-about-me", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = req.user.claims.sub;
+      const employee = await storage.getEmployeeByUserId(userId);
+      if (!employee) {
+        return res.status(404).json({ message: "Employee not found" });
+      }
+
+      const activeCycle = await storage.getActiveCycle();
+      if (!activeCycle) {
+        return res.status(400).json({ message: "No active appraisal cycle" });
+      }
+
+      const data = {
+        ...req.body,
+        employeeId: employee.id,
+        appraisalCycleId: activeCycle.id,
+      };
+
+      const validated = insertKnowAboutMeSchema.parse(data);
+      const kam = await storage.upsertKnowAboutMe(validated);
+      res.json(kam);
+    } catch (error: any) {
+      console.error("Error saving KAM:", error);
+      if (error.name === "ZodError") {
+        return res.status(400).json({ message: "Invalid data", errors: error.errors });
+      }
+      res.status(500).json({ message: "Failed to save Know About Me data" });
     }
   });
 

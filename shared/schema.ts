@@ -241,6 +241,55 @@ export const insertAppraisalCycleSchema = createInsertSchema(appraisalCycles).om
   createdAt: true,
 });
 
+// Know About Me (KAM) - Employee self-assessment and achievements
+export const knowAboutMe = pgTable("know_about_me", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employeeId: varchar("employee_id").notNull(),
+  appraisalCycleId: varchar("appraisal_cycle_id").notNull(),
+  // Projects & Contributions
+  projectContributions: text("project_contributions"),
+  roleAndResponsibilities: text("role_and_responsibilities"),
+  keyAchievements: text("key_achievements"),
+  // Learning & Growth
+  learnings: text("learnings"),
+  certifications: text("certifications"),
+  technologiesWorkedOn: text("technologies_worked_on"),
+  // Leadership & Team
+  mentorship: text("mentorship"),
+  volunteeringActivities: text("volunteering_activities"),
+  leadershipRoles: text("leadership_roles"),
+  teamBuildingActivities: text("team_building_activities"),
+  // Problem Solving & Strengths
+  problemsSolved: text("problems_solved"),
+  strengths: text("strengths"),
+  // Extra Efforts
+  extraEfforts: text("extra_efforts"),
+  improvements: text("improvements"),
+  // Metadata
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const knowAboutMeRelations = relations(knowAboutMe, ({ one }) => ({
+  employee: one(employees, {
+    fields: [knowAboutMe.employeeId],
+    references: [employees.id],
+  }),
+  appraisalCycle: one(appraisalCycles, {
+    fields: [knowAboutMe.appraisalCycleId],
+    references: [appraisalCycles.id],
+  }),
+}));
+
+export const insertKnowAboutMeSchema = createInsertSchema(knowAboutMe).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type KnowAboutMe = typeof knowAboutMe.$inferSelect;
+export type InsertKnowAboutMe = z.infer<typeof insertKnowAboutMeSchema>;
+
 export type Employee = typeof employees.$inferSelect;
 export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
 export type FeedbackRequest = typeof feedbackRequests.$inferSelect;
